@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <cstddef>
 
-namespace miniasn
+namespace miniasan
 {
     static const int SHADOW_SCALE = 3;
     static const size_t SHADOW_GRANULARITY = 1ULL << SHADOW_SCALE; // 8 bytes
