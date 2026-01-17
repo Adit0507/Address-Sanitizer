@@ -17,7 +17,34 @@ namespace miniasn
     static const int8_t kAsanStackMidRedzoneMagic = -13;
     static const int8_t kAsanStackLeftRedzoneMagic = -15;
     static const int8_t kAsanStackRightRedzoneMagic = -14;
-    
+
+    class ShadowMemory
+    {
+    public:
+        static ShadowMemory &getInstance();
+        void init();                              // initializn shadow memory
+        int8_t *getShadowAddress(uintptr_t addr); // shadow address for given memory address
+        bool isAccessible(uintptr_t addr, size_t size);
+
+        void poison(uintptr_t addr, size_t size, int8_t magic); // inaccesible memory
+        void unpoison(uintptr_t addr, size_t size);             // marking memory as unaccessible
+
+        void poisonRedZone(uintptr_t addr, size_t size, int8_t magic);
+        int8_t getShadowValue(uintptr_t addr);
+
+    private:
+        ShadowMemory();
+        ~ShadowMemory();
+
+        // preventing copying
+        ShadowMemory(const ShadowMemory &) = delete;
+        ShadowMemory &operator=(const ShadowMemory &) = delete;
+
+        int8_t *shadow_base_;
+        bool initialized_;
+        static const uintptr_t kShadowOffset = 0;
+    };
+
 }
 
 #endif
