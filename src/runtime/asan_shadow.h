@@ -45,6 +45,21 @@ namespace miniasn
         static const uintptr_t kShadowOffset = 0;
     };
 
+    inline int8_t *memToShadow(uintptr_t addr)
+    {
+        return ShadowMemory::getInstance().getShadowAddress(addr);
+    }
+    inline bool addressIsPoisoned(uintptr_t addr)
+    {
+        int8_t shadow_value = *memToShadow(addr);
+        if (shadow_value == 0)
+            return false;
+
+        int8_t last_accessible_byte = shadow_value;
+        int8_t offset_in_granule = addr & (SHADOW_GRANULARITY - 1);
+
+        return offset_in_granule >= last_accessible_byte;
+    }
 }
 
 #endif
