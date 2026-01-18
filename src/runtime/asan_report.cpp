@@ -2,8 +2,13 @@
 #include "asan_shadow.h"
 #include <iostream>
 #include <iomanip>
-// #include <execinfo.h>
 #include <cstdlib>
+#ifdef _WIN32
+  // no execinfo on Windows
+#else
+  #include <execinfo.h>
+#endif
+
 
 namespace miniasan
 {
@@ -78,5 +83,77 @@ namespace miniasan
         }
         std::cerr << std::dec;
     }
+
+    void ErrorReporter::reportMemoryError(void *addr, size_t size)
+    {
+        std::cerr << "\n";
+        std::cerr << "=================================================================\n";
+        std::cerr << "==ERROR: AddressSanitizer: heap-buffer-overflow\n";
+        std::cerr << "==Access of size " << size << " at address " << addr << "\n";
+
+        void *stack[16];
+        size_t stack_size = captureStack(stack, 16);
+        printStackTrace(stack, stack_size, "READ of size");
+
+        printShadowBytes(addr, 64);
+
+        std::cerr << "=================================================================\n";
+        std::cerr << std::flush;
+
+        abort();
+    }
+    void ErrorReporter::reportInvalidFree(void* ptr) {
+    std::cerr << "\n";
+    std::cerr << "=================================================================\n";
+    std::cerr << "==ERROR: AddressSanitizer: attempting to free invalid pointer\n";
+    std::cerr << "==Address: " << ptr << "\n";
+    
+    void* stack[16];
+    size_t stack_size = captureStack(stack, 16);
+    printStackTrace(stack, stack_size, "Invalid free");
+    
+    std::cerr << "=================================================================\n";
+    std::cerr << std::flush;
+    
+    abort();
+}
+
+void ErrorReporter::reportDoubleFree(void* ptr, AllocationMetaData* metadata) {
+    std::cerr << "\n";
+    std::cerr << "=================================================================\n";
+    std::cerr << "==ERROR: AddressSanitizer: attempting free on address which was already freed\n";
+    std::cerr << "==Address: " << ptr << "\n";
+    std::cerr << "==Original allocation size: " << metadata->user_size << "\n";
+    
+    void* stack[16];
+    size_t stack_size = captureStack(stack, 16);
+    printStackTrace(stack, stack_size, "Current free");
+    
+    printStackTrace(metadata->alloc_stack, metadata->alloc_stack_size, "Previously allocated");
+    printStackTrace(metadata->free_stack, metadata->free_stack_size, "Previously freed");
+    
+    std::cerr << "=================================================================\n";
+    std::cerr << std::flush;
+    
+    abort();
+}
+
+void ErrorReporter::reportUseAfterFree(void* ptr, AllocationMetaData* metadata) {
+    std::cerr << "\n";
+    std::cerr << "=================================================================\n";
+    std::cerr << "==ERROR: AddressSanitizer: heap-use-after-free\n";
+    std::cerr << "==Address: " << ptr << "\n";
+    
+    printStackTrace(metadata->alloc_stack, metadata->alloc_stack_size, "Allocated");
+    printStackTrace(metadata->free_stack, metadata->free_stack_size, "Freed");
+    
+    printShadowBytes(ptr, 64);
+    
+    std::cerr << "=================================================================\n";
+    std::cerr << std::flush;
+    
+    abort();
+}
+
 
 }
