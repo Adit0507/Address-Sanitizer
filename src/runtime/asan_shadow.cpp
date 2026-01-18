@@ -44,4 +44,14 @@ namespace miniasan
     initialized_ = true;
   }
 
+  int8_t * ShadowMemory:: getShadowAddress(uintptr_t addr) {
+    uintptr_t shadow_offset = addr >> SHADOW_SCALE;
+  
+    return shadow_base_ + shadow_offset;
+  }
+
+  int8_t ShadowMemory::getShadowValue(uintptr_t addr) {
+    return *getShadowAddress(addr);
+  }
+
 }
