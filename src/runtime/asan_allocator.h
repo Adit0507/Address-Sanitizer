@@ -24,6 +24,39 @@ namespace miniasan
         bool is_freed;
     };
 
+    class AsanAllocator
+    {
+    public:
+        static AsanAllocator &getInstance();
+
+        void init();
+        void *allocate(size_t size);
+        void deallocate(void *ptr);
+
+        bool isValidAllocation(void *ptr);
+        AllocationMetaData *getMetaData(void *ptr);
+        bool checkAccess(void *ptr, size_t size);
+
+    private:
+        AsanAllocator();
+        ~AsanAllocator();
+        AsanAllocator(const AsanAllocator &) = delete;
+        AsanAllocator &operator=(const AsanAllocator &) = delete;
+
+        size_t captureStackTrace(void **buffer, size_t max_frames); // capture stack trace
+        void addToQuarantine(AllocationMetaData *metadata);
+        void processQuarantine();
+
+        std::unordered_map<void *, AllocationMetaData *> allocations_;
+        std::mutex mutex_;
+
+        // quarantine queue
+        std::deque<AllocationMetaData *> quarantine_;
+        size_t quarantine_size_;
+        static const size_t kMaxQuarantineSize = 64 * 1024 * 1024;
+        bool initialized_;
+    };
+
 }
 
 #endif
