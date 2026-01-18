@@ -13,6 +13,16 @@ namespace miniasan
         void reportInvalidFree(void *ptr);
         void reportDoubleFree(void *ptr, AllocationMetaData *metadata);
         void reportUseAfterFree(void *ptr, AllocationMetaData *metadata);
+        size_t ErrorReporter::captureStack(void **stack, size_t max)
+        {
+        #ifndef _WIN32
+                    return backtrace(stack, max);
+        #else
+                    (void)stack;
+                    (void)max;
+                    return 0;
+        #endif
+        }
 
     private:
         ErrorReporter() = default;
