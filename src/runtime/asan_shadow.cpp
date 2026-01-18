@@ -114,4 +114,9 @@ namespace miniasan
       shadow_start[full_regions] = remainder;
     }
   }
+
+  void ShadowMemory ::poisonRedZone(uintptr_t addr, size_t size, int8_t magic)
+  {
+    poison(addr, size, magic);
+  }
 }
