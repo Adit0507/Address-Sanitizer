@@ -93,4 +93,25 @@ namespace miniasan
 
     return true;
   }
+
+  void ShadowMemory::poison(uintptr_t addr, size_t size, int8_t magic)
+  {
+    int8_t *shadow_start = getShadowAddress(addr);
+    size_t shadow_size = (size + SHADOW_GRANULARITY - 1) >> SHADOW_SCALE;
+
+    memset(shadow_start, magic, shadow_size);
+  }
+  void ShadowMemory::unpoison(uintptr_t addr, size_t size)
+  {
+    int8_t *shadow_start = getShadowAddress(addr);
+    size_t full_regions = size >> SHADOW_SCALE;
+
+    memset(shadow_start, 0, full_regions); // markin regions as accesible
+
+    size_t remainder = size & (SHADOW_GRANULARITY - 1);
+    if (remainder > 0)
+    {
+      shadow_start[full_regions] = remainder;
+    }
+  }
 }
