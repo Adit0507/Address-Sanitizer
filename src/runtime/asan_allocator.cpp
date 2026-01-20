@@ -3,8 +3,14 @@
 #include "asan_report.h"
 #include <cstdlib>
 #include <cstring>
-#include <execinfo.h>
-#include <dlfcn.h>
+#ifdef _WIN32
+  #include <windows.h>
+  #include <dbghelp.h>
+#else
+  #include <execinfo.h>
+  #include <dlfcn.h>
+#endif
+
 
 namespace miniasan
 {
