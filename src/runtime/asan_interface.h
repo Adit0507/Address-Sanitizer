@@ -20,7 +20,21 @@ extern "C"
 }
 
 namespace miniasan {
-    
+    class StackGuard {
+        public:
+        StackGuard(void *addr, size_t size): addr_(addr), size_(size) {
+            __asan_poison_memory_region(addr, size);
+        }
+
+        ~StackGuard(){
+            __asan_unpoison_memory_region(addr_, size_);
+        }
+
+        private:
+        void *addr_;
+        size_t size_;
+    };
 }
 
+#endif
 #endif
