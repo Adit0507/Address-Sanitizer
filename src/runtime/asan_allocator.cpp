@@ -127,7 +127,23 @@ namespace miniasan
         // poison entire region including user space
         ShadowMemory& shadow = ShadowMemory:: getInstance();
         shadow.poison((uintptr_t)metadata->real_ptr, metadata->real_size, kAsanHeapFreeMagic);
-        
+
+        addToQuarantine(metadata);  //adding to quarantine instead of freeing immediately
+    }
+
+    void AsanAllocator:: addToQuarantine(AllocationMetaData*metadata){
+        std::lock_guard<std::mutex> lock(mutex_);
+        quarantine_.push_back(metadata);
+        quarantine_size_ += metadata->real_size;
+
+        while(quarantine_size_ > kMaxQuarantineSize && !quarantine_.empty()){
+            AllocationMetaData *old=  quarantine_.front();
+            quarantine_.pop_front();
+            quarantine_size_ -= old->real_size;
+
+            RealFree(old->real_ptr);
+            delete old;
+        }
     }
 
 }
