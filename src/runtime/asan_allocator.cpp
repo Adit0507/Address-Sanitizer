@@ -179,3 +179,32 @@ namespace miniasan
     }
 
 }
+
+extern "C"
+{
+    static bool g_malloc_ready = false;
+
+    void __attribute__((constructor)) init_malloc_hook()
+    {
+        g_malloc_ready = true;
+    }
+    void *malloc(size_t size)
+    {
+        if (!g_malloc_ready)
+        {
+            static HANDLE process_heap = GetProcessHeap();
+            return HeapAlloc(process_heap, 0, size);
+        }
+
+        return miniasan::AsanAllocator::getInstance().allocate(size);
+    }
+    void free(void *ptr)
+    {
+        if (!g_malloc_ready)
+        {
+            static HANDLE process_heap = GetProcessHeap();
+            HeapFree(process_heap, 0, ptr);
+            return;
+        }
+    }
+}
