@@ -207,4 +207,43 @@ extern "C"
             return;
         }
     }
+
+    void *calloc(size_t nmemb, size_t size)
+    {
+        size_t total = nmemb * size;
+        void *ptr = malloc(total);
+        if (ptr)
+        {
+            memset(ptr, 0, total);
+        }
+
+        return ptr;
+    }
+
+    void *realloc(void *ptr, size_t size)
+    {
+        if (!ptr)
+            return malloc(size);
+        if (size == 0)
+        {
+            free(ptr);
+
+            return nullptr;
+        }
+
+        void *new_ptr = malloc(size);
+        if (new_ptr && ptr)
+        {
+            auto *metadata = miniasan::AsanAllocator::getInstance().getMetaData(ptr);
+            if (metadata)
+            {
+                size_t copy_size = (size < metadata->user_size) ? size : metadata->user_size;
+                memcpy(new_ptr, ptr, copy_size);
+            }
+
+            free(ptr);
+        }
+
+        return new_ptr;
+    }
 }
