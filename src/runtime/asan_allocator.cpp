@@ -86,10 +86,10 @@ namespace miniasan
         shadow.poisonRedZone((uintptr_t)real_ptr, kRedZoneSize, kAsanHeapLeftRedzoneMagic);
         shadow.poisonRedZone((uintptr_t)user_ptr + size, kRedZoneSize, kAsanHeapLeftRedzoneMagic);
 
-        shadow.unpoison((uintptr_t)user_ptr, size);//unpoisin user area
+        shadow.unpoison((uintptr_t)user_ptr, size); // unpoisin user area
 
-        std::lock_guard<std:: mutex> lock(mutex_);
-        allocations_[user_ptr]= metadata;
+        std::lock_guard<std::mutex> lock(mutex_);
+        allocations_[user_ptr] = metadata;
 
         return user_ptr;
     }
@@ -121,29 +121,44 @@ namespace miniasan
 
             metadata->is_freed = true;
             metadata->free_stack_size = captureStackTrace(metadata->free_stack, 16);
-            allocations_.erase(it); //remvin from active allocations
+            allocations_.erase(it); // remvin from active allocations
         }
 
         // poison entire region including user space
-        ShadowMemory& shadow = ShadowMemory:: getInstance();
+        ShadowMemory &shadow = ShadowMemory::getInstance();
         shadow.poison((uintptr_t)metadata->real_ptr, metadata->real_size, kAsanHeapFreeMagic);
 
-        addToQuarantine(metadata);  //adding to quarantine instead of freeing immediately
+        addToQuarantine(metadata); // adding to quarantine instead of freeing immediately
     }
 
-    void AsanAllocator:: addToQuarantine(AllocationMetaData*metadata){
+    void AsanAllocator::addToQuarantine(AllocationMetaData *metadata)
+    {
         std::lock_guard<std::mutex> lock(mutex_);
         quarantine_.push_back(metadata);
         quarantine_size_ += metadata->real_size;
 
-        while(quarantine_size_ > kMaxQuarantineSize && !quarantine_.empty()){
-            AllocationMetaData *old=  quarantine_.front();
+        while (quarantine_size_ > kMaxQuarantineSize && !quarantine_.empty())
+        {
+            AllocationMetaData *old = quarantine_.front();
             quarantine_.pop_front();
             quarantine_size_ -= old->real_size;
 
             RealFree(old->real_ptr);
             delete old;
         }
+    }
+
+    bool AsanAllocator::isValidAllocation(void *ptr)
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return allocations_.find(ptr) != allocations_.end();
+    }
+
+    AllocationMetaData*AsanAllocator:: getMetaData(void *ptr){
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto it = allocations_.find(ptr);
+
+        return (it!= allocations_.end()) ? it->second: nullptr;
     }
 
 }
