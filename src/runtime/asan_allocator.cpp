@@ -154,11 +154,28 @@ namespace miniasan
         return allocations_.find(ptr) != allocations_.end();
     }
 
-    AllocationMetaData*AsanAllocator:: getMetaData(void *ptr){
+    AllocationMetaData *AsanAllocator::getMetaData(void *ptr)
+    {
         std::lock_guard<std::mutex> lock(mutex_);
         auto it = allocations_.find(ptr);
 
-        return (it!= allocations_.end()) ? it->second: nullptr;
+        return (it != allocations_.end()) ? it->second : nullptr;
+    }
+
+    bool AsanAllocator::checkAccess(void *ptr, size_t size)
+    {
+        if (!initialized_)
+            return true;
+
+        ShadowMemory &shadow = ShadowMemory::getInstance();
+        bool is_accessible = shadow.isAccessible((uintptr_t)ptr, size);
+        if (!is_accessible)
+        {
+            ErrorReporter::getInstance().reportMemoryError(ptr, size);
+            return false;
+        }
+
+        return true;
     }
 
 }
