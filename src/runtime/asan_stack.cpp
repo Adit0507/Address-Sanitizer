@@ -28,22 +28,33 @@ namespace miniasan
         uintptr_t left_rz_addr = var_addr - kStackRedZoneSize;
         uintptr_t right_rz_addr = var_addr + size;
 
-        *left_rz= (void *)left_rz_addr;
-        *right_rz= (void *)right_rz_addr;
+        *left_rz = (void *)left_rz_addr;
+        *right_rz = (void *)right_rz_addr;
 
         poisonStackRedZone(*left_rz, kStackRedZoneSize);
         poisonStackRedZone(*right_rz, kStackRedZoneSize);
-    
-        ShadowMemory:: getInstance().unpoison(var_addr, size);
+
+        ShadowMemory::getInstance().unpoison(var_addr, size);
     }
 
-    void StackProtector:: unprotectStackVariable(void*left_rz, void *right_rz){
-        if(left_rz){
+    void StackProtector::unprotectStackVariable(void *left_rz, void *right_rz)
+    {
+        if (left_rz)
+        {
             unpoisonStackRedZone(left_rz, kStackRedZoneSize);
         }
-        if(right_rz){
+        if (right_rz)
+        {
             unpoisonStackRedZone(right_rz, kStackRedZoneSize);
         }
     }
 
+    StackVariableGuard::StackVariableGuard(void *addr, size_t size) : addr_(addr), size_(size)
+    {
+        StackProtector::getInstance().protectStackVariable(addr, size, &left_redzone_, &right_redzone_);
+    }
+    StackVariableGuard::~StackVariableGuard()
+    {
+        StackProtector::getInstance().unprotectStackVariable(left_redzone_, right_redzone_);
+    }
 }
