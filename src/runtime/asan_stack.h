@@ -24,6 +24,22 @@ namespace miniasan
         StackProtector(const StackProtector &) = delete;
         StackProtector &operator=(const StackProtector &) = delete;
     };
+
+    // raii wrapper
+    class StackVariableGuard {
+        public:
+            StackVariableGuard(void *addr, size_t size);
+            ~StackVariableGuard();
+
+        private:
+            void *left_redzone_;
+            void *right_redzone_;
+            void *addr_;
+            size_t size_;
+    };
 }
+
+#define ASAN_PROTECT_STACK_VAR(var) \
+    miniasan::StackVariableGuard __stack_guard_##var(&var, sizeof(var))
 
 #endif
