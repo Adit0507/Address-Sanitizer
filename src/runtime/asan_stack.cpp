@@ -37,4 +37,13 @@ namespace miniasan
         ShadowMemory:: getInstance().unpoison(var_addr, size);
     }
 
+    void StackProtector:: unprotectStackVariable(void*left_rz, void *right_rz){
+        if(left_rz){
+            unpoisonStackRedZone(left_rz, kStackRedZoneSize);
+        }
+        if(right_rz){
+            unpoisonStackRedZone(right_rz, kStackRedZoneSize);
+        }
+    }
+
 }
