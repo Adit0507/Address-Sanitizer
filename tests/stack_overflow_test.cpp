@@ -19,3 +19,9 @@ void vulnerable_function() {
     __asan_unpoison_memory_region(left_redzone, 8);
     __asan_unpoison_memory_region(right_redzone, 8);
 }
+
+int main(){
+    std::cout << "Testing stack buffer overflow...\n";
+    vulnerable_function();
+    return 0;
+}
