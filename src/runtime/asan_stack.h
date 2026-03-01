@@ -16,7 +16,7 @@ namespace miniasan
         void poisonStackRedZone(void *addr, size_t size);
         void unpoisonStackRedZone(void *addr, size_t size);
 
-        void protectStackVariable(void *addr, size_t size, void **left_rz, void **right_rz);
+        void protectStackVariable(void *left_rz, void *var, size_t var_size, void *right_rz);
         void unprotectStackVariable(void *left_rz, void *right_rz);
 
     private:
@@ -26,20 +26,22 @@ namespace miniasan
     };
 
     // raii wrapper
-    class StackVariableGuard {
-        public:
-            StackVariableGuard(void *addr, size_t size);
-            ~StackVariableGuard();
+    class StackVariableGuard
+    {
+    public:
+        StackVariableGuard(void *left_rz, void *var, size_t var_size, void *right_rz);
+        ~StackVariableGuard();
 
-        private:
-            void *left_redzone_;
-            void *right_redzone_;
-            void *addr_;
-            size_t size_;
+    private:
+        void *left_redzone_;
+        void *right_redzone_;
     };
 }
 
-#define ASAN_PROTECT_STACK_VAR(var) \
-    miniasan::StackVariableGuard __stack_guard_##var(&var, sizeof(var))
+#define ASAN_PROTECT_STACK_VAR(var)                   \
+    char __asan_left_rz_##var[32];                    \
+    char __asan_right_rz_##var[32];                   \
+    miniasan::StackVariableGuard __stack_guard_##var( \
+        __asan_left_rz_##var, &var, sizeof(var), __asan_right_rz_##var)
 
 #endif
