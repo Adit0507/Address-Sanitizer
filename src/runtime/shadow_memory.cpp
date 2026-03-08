@@ -38,3 +38,34 @@ ShadowMemory::~ShadowMemory()
 {
     shutdown();
 }
+
+bool ShadowMemory ::ensure_committed(uint8_t *shadow_ptr, size_t len)
+{
+    uintptr_t base = reinterpret_cast<uintptr_t>(shadow_base_);
+    uintptr_t start = reinterpret_cast<uintptr_t>(shadow_ptr);
+
+    assert(start >= base && "shadow_ptr is below shadow_base_");
+    size_t offset_end = (start - base) + len;
+
+    if (offset_end <= committed_end_)
+        return true;
+
+    size_t gran = platform_alloc_granularity();
+    size_t commit_start = committed_end_ & ~(gran - 1);
+    size_t commit_end = (offset_end + gran - 1) & ~(gran - 1);
+    size_t commit_size = commit_end - commit_start;
+
+    if (commit_start + commit_size > shadow::kShadowSize)
+    {
+        fprintf(stderr, "[my_asan] FATAL: Shadow commit would exceed 16TB.\n");
+        return false;
+    }
+
+    void *result = platform_commit(reinterpret_cast<void *>(base + commit_start), commit_size);
+    if (!result)
+        return false;
+
+    committed_end_ = commit_end;
+
+    return true;
+}
