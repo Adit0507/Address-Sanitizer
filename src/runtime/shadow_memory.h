@@ -40,7 +40,7 @@ public:
 
     // poisoning and unpoisioning
     void poison(uintptr_t addr, size_t size, uint8_t value);
-    void unpoison(uintptr_t addr, size_t size, uint8_t value);
+    void unpoison(uintptr_t addr, size_t size);
 
     // poisoning a region whose size isnt multiple of 8
     void poison_partial(uintptr_t addr, size_t size, uint8_t value);
