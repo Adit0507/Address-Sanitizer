@@ -108,9 +108,35 @@ void ShadowMemory::poison_partial(uintptr_t addr, size_t size, uint8_t value)
     {
         uintptr_t partial_addr = addr + full_slots * shadow::kGranularity;
         uint8_t *sptr = shadow_ptr_of(partial_addr);
-        if(!ensure_committed(sptr, 1)) return;
+        if (!ensure_committed(sptr, 1))
+            return;
 
         *sptr = value;
+    }
+}
+
+void ShadowMemory ::unpoison_partial(uintptr_t addr, size_t size)
+{
+    assert(shadow_base_ != nullptr && "Shadow Memory not initialised");
+    if (size == 0)
+        return;
+
+    size_t full_slots = size / shadow::kGranularity;
+    if (full_slots > 0)
+    {
+        unpoison(addr, full_slots * shadow::kGranularity);
+    }
+
+    size_t remainder = size % shadow::kGranularity;
+    if (remainder != 0)
+    {
+        uintptr_t partial_addr = addr + full_slots * shadow::kGranularity;
+        uint8_t *sptr = shadow_ptr_of(partial_addr);
+
+        if (!ensure_committed(sptr, 1))
+            return;
+
+        *sptr = static_cast<uint8_t>(remainder);
     }
 }
 
