@@ -14,3 +14,12 @@ static SYSTEM_INFO get_system_info() {
 
     return si;
 }
+
+void *platform_reserve(size_t size){
+    void *ptr = VirtualAlloc(nullptr, size, MEM_RESERVE, PAGE_READWRITE);
+    if(!ptr){
+        fprintf(stderr, "asan platform_reserve(%zu) failed: error %lu\n", size, GetLastError());
+    }
+
+    return ptr;
+}
