@@ -69,3 +69,53 @@ bool ShadowMemory ::ensure_committed(uint8_t *shadow_ptr, size_t len)
 
     return true;
 }
+
+void ShadowMemory ::poison(uintptr_t addr, size_t size, uint8_t value)
+{
+    assert(shadow_base_ != nullptr && "Shadow Memory not initialised");
+    assert((size % shadow::kGranularity) == 0 && "size must be a multiple of 8 for aligned poison()");
+
+    if (size == 0)
+        return;
+
+    uint8_t *sptr = shadow_ptr_of(addr);
+    size_t slen = size >> shadow::kGranularityLog2;
+
+    if (!ensure_committed(sptr, slen))
+        return;
+
+    memset(sptr, value, slen);
+}
+void ShadowMemory::unpoison(uintptr_t addr, size_t size)
+{
+    poison(addr, size, shadow::kAccessible);
+}
+
+void ShadowMemory::poison_partial(uintptr_t addr, size_t size, uint8_t value)
+{
+    assert(shadow_base_ != nullptr && "Shadow Memory not initialised");
+    if (size == 0)
+        return;
+
+    size_t full_slots = size / shadow::kGranularity; // handlin all fully covered 8byte slots
+    if (full_slots > 0)
+    {
+        poison(addr, full_slots * shadow::kGranularity, value);
+    }
+
+    size_t remainder = size % shadow::kGranularity;
+    if (remainder != 0)
+    {
+        uintptr_t partial_addr = addr + full_slots * shadow::kGranularity;
+        uint8_t *sptr = shadow_ptr_of(partial_addr);
+        if(!ensure_committed(sptr, 1)) return;
+
+        *sptr = value;
+    }
+}
+
+ShadowMemory &get_shadow_memory()
+{
+    static ShadowMemory instance;
+    return instance;
+}
