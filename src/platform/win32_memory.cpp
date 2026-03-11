@@ -23,3 +23,13 @@ void *platform_reserve(size_t size){
 
     return ptr;
 }
+
+// platform commit
+void *platform_commit(void *base, size_t size){
+    void* ptr = VirtualAlloc(base, size, MEM_COMMIT, PAGE_READWRITE);
+    if(!ptr){
+        fprintf(stderr, "[asan] platform_commit(%p, %zu) failed: error %lu\n", base, size, GetLastError());
+    }
+
+    return ptr;
+}
