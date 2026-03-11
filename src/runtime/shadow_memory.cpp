@@ -140,6 +140,18 @@ void ShadowMemory ::unpoison_partial(uintptr_t addr, size_t size)
     }
 }
 
+// querying stuff
+uint8_t ShadowMemory::get_shadow_byte(uintptr_t addr) const
+{
+    assert(shadow_base_ != nullptr && "Shadow Memory not initialised");
+
+    const uint8_t *sptr = shadow_ptr_of(addr);
+    if (!platform_is_committed(const_cast<uint8_t *>(sptr), 1))
+        return shadow::kAccessible;
+
+    return *sptr;
+}
+
 ShadowMemory &get_shadow_memory()
 {
     static ShadowMemory instance;
