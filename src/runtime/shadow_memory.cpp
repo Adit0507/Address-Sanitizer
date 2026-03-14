@@ -169,6 +169,67 @@ bool ShadowMemory ::is_poisoned(uintptr_t addr, size_t access_size) const
     return (offset + access_size) > static_cast<size_t>(shadow_val);
 }
 
+bool ShadowMemory::is_range_poisoned(uintptr_t addr, size_t size) const
+{
+    assert(shadow_base_ != nullptr && "ShadowMemory isnt initialized");
+
+    if (size == 0)
+        return false;
+
+    uintptr_t end = addr + size;
+    for (uintptr_t cur = addr; cur < end; cur += shadow::kGranularity)
+    {
+        size_t remaining = end - cur;
+        size_t check_size = std::min(remaining, shadow::kGranularity);
+
+        if (is_poisoned(cur, check_size))
+            return true;
+    }
+
+    return false;
+}
+
+// diagnostics
+uintptr_t ShadowMemory::shadow_addr_of(uintptr_t real_addr) const
+{
+    return reinterpret_cast<uintptr_t>(shadow_addr_of(real_addr));
+}
+
+void ShadowMemory ::dump_shadow_region(uintptr_t addr, size_t context_bytes) const
+{
+    uintptr_t start = (addr - context_bytes) & ~(shadow::kGranularity - 1ULL);
+    uintptr_t end = (addr + context_bytes);
+
+    fprintf(stderr, "\n[asan] Shadow map around %p:\n", reinterpret_cast<void *>(addr));
+    fprintf(stderr, "  %-18s  %-6s  %s\n", "Real Addr", "Shadow", "State");
+    fprintf(stderr, "  %-18s  %-6s  %s\n", "---------", "------", "-----");
+
+    for (uintptr_t curr = start; curr < end; curr += shadow::kGranularity)
+    {
+        uint8_t sb = get_shadow_byte(curr);
+        const char *state = "accessible";
+        if (sb == shadow::kHeapLeftRedZone)
+            state = "HEAP LEFT REDZONE";
+        else if (sb == shadow::kHeapRightRedZone)
+            state = "HEAP RIGHT REDZONE";
+        else if (sb == shadow::kFreedMemory)
+            state = "FREED MEMORY";
+        else if (sb == shadow::kStackRedzone)
+            state = "STACK REDZONE";
+        else if (sb == shadow::kGlobalRedzone)
+            state = "GLOBAL REDZONE";
+        else if (sb >= 1 && sb <= 7)
+        {
+            state = "partial";
+        }
+
+        const char *marker = (curr <= addr && addr < curr + shadow::kGranularity) ? ">>" : "  ";
+        fprintf(stderr, "%s  0x%016llx   0x%02x   %s\n", marker, static_cast<unsigned long long>(curr), sb, state);
+    }
+
+    fprintf(stderr, "\n");
+}
+
 ShadowMemory &get_shadow_memory()
 {
     static ShadowMemory instance;
