@@ -152,6 +152,23 @@ uint8_t ShadowMemory::get_shadow_byte(uintptr_t addr) const
     return *sptr;
 }
 
+bool ShadowMemory ::is_poisoned(uintptr_t addr, size_t access_size) const
+{
+    assert(shadow_base_ != nullptr && "ShadowMemory not initialised");
+    assert((access_size == 1 || access_size == 2 || access_size == 4 || access_size == 8) && "access_size must be 1, 2, 4, or 8");
+
+    uint8_t shadow_val = get_shadow_byte(addr);
+
+    if (shadow_val == shadow::kAccessible)
+        return false;
+    if (shadow_val >= shadow::kGranularity)
+        return true;
+
+    size_t offset = addr & (shadow::kGranularity - 1);
+
+    return (offset + access_size) > static_cast<size_t>(shadow_val);
+}
+
 ShadowMemory &get_shadow_memory()
 {
     static ShadowMemory instance;
