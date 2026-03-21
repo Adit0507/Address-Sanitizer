@@ -49,15 +49,27 @@ struct StackTrace
 // allocation metadata
 struct AllocInfo
 {
-    uintptr_t   user_ptr;  // pointer returned to user
-    size_t      user_size;    // size requested by user
-    uintptr_t   alloc_ptr; // pointer from underlying alllocator
-    size_t      alloc_size;
-    StackTrace  alloc_trace;
-    bool        is_freed;
+    uintptr_t user_ptr;  // pointer returned to user
+    size_t user_size;    // size requested by user
+    uintptr_t alloc_ptr; // pointer from underlying alllocator
+    size_t alloc_size;
+    StackTrace alloc_trace;
+    bool is_freed;
 
     AllocInfo() : user_ptr(0), user_size(0), alloc_ptr(0), alloc_size(0), is_freed(false) {}
 };
 
+struct AsanReport
+{
+    ErrorType error_type;
+    uintptr_t fault_addr; // address of bad access
+    size_t access_size; //how many bytes were being acceseed
+    bool is_write;  
+    uint8_t shadow_byte;
+    AllocInfo AllocInfo;
+    StackTrace access_trace; //stack at point of bad access
+
+    AsanReport() : error_type(ErrorType::None), fault_addr(0), access_size(0), is_write(false) {}
+};
 
 #endif
