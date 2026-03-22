@@ -34,4 +34,16 @@ static_assert(ASAN_REDZONE_SIZE >= 8, "ASAN_REDZONE_SIZE must be atleast 8");
 #define ASAN_ABORT_ON_ERROR 1
 #endif
 
+#ifndef ASAN_ENABLE_HEAP_CHECK
+#define ASAN_ENABLE_HEAP_CHECK 1
+#endif
+
+#ifndef ASAN_ENABLE_STACK_CHECK
+#define ASAN_ENABLE_STACK_CHECK 0
+#endif
+
+#ifndef ASAN_ENABLE_MSVC_HOOKS
+#define ASAN_ENABLE_MSVC_HOOKS 1
+#endif
+
 #endif
