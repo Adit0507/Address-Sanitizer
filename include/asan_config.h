@@ -21,5 +21,17 @@ static_assert(ASAN_REDZONE_SIZE >= 8, "ASAN_REDZONE_SIZE must be atleast 8");
 #define ASAN_MAX_STACK_FRAMES 32
 #endif
 
+// output
+#ifndef ASAN_PRINT_SHADOW_CONTEXT
+#define ASAN_PRINT_SHADOW_CONTEXT 1
+#endif
+
+#ifndef ASAN_SHADOW_CONTEXT_BYTES
+#define ASAN_SHADOW_CONTEXT_BYTES 32
+#endif
+
+#ifndef ASAN_ABORT_ON_ERROR
+#define ASAN_ABORT_ON_ERROR 1
+#endif
 
 #endif
