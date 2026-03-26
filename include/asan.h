@@ -47,6 +47,15 @@ void asan_free(void *ptr);
         }                                                          \
     } while (0)
 
+// access check macros
+#if ASAN_ENABLE_HEAP_CHECK
+#define CHECK_READ(ptr, size) asan_check_read((ptr), (size))
+#define CHECK_WRITE(ptr, size) asan_check_write((ptr), (size))
+#else 
+#define CHECK_READ(ptr, size) ((void)0)
+#define CHECK_WRITE(ptr, size) ((void)0)
+#endif
+
 void asan_report_summary(); // sumary of all errors
 int asan_error_count();
 
