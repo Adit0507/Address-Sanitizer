@@ -24,6 +24,12 @@ class HeapTracker {
     void *on_realloc(void *ptr, size_t new_size);
 
     void on_free(void *ptr);//looks up metadtaa, validates pointer, records free stack trace
+
+    // metadata queries
+    bool get_alloc_info(uintptr_t user_ptr, AllocInfo &out) const;
+    bool find_allocation_for_addr(uintptr_t addr, AllocInfo &out) const;
+    bool is_known_freed(uintptr_t user_ptr, AllocInfo &out) const;
+    
 };
 
 
