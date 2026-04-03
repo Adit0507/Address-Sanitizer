@@ -39,7 +39,7 @@ private:
     QuarantineEntry* tail_;
     size_t total_bytes_;
     size_t count_;
-    size_t max_bytes;
+    size_t max_bytes_;
 };
 
 Quarantine &get_quarantine();
