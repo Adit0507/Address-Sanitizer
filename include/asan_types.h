@@ -54,6 +54,7 @@ struct AllocInfo
     uintptr_t alloc_ptr; // pointer from underlying alllocator
     size_t alloc_size;
     StackTrace alloc_trace;
+    StackTrace free_trace;  //call stack at free() time
     bool is_freed;
 
     AllocInfo() : user_ptr(0), user_size(0), alloc_ptr(0), alloc_size(0), is_freed(false) {}
