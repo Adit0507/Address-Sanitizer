@@ -32,3 +32,13 @@ bool init_symbol_handler()
 
     return true;
 }
+
+void capture_stack_trace(StackTrace &trace, int max_frames, int frames_to_skip)
+{
+    if (max_frames > kMaxStackFrame)
+        max_frames = kMaxStackFrame;
+    // frames to skip capturestackbacktrace itself +this function
+    USHORT captured = CaptureStackBackTrace(static_cast<ULONG>(frames_to_skip), static_cast<ULONG>(max_frames), trace.frames, nullptr);
+
+    trace.depth = static_cast<int>(captured);
+}
