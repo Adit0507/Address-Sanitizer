@@ -42,3 +42,78 @@ void capture_stack_trace(StackTrace &trace, int max_frames, int frames_to_skip)
 
     trace.depth = static_cast<int>(captured);
 }
+
+FrameInfo resolve_frame(void *address)
+{
+    FrameInfo fi{};
+
+    fi.address = address;
+    fi.resolved = false;
+    fi.line = 0;
+    fi.function[0] = '\0';
+    fi.filename[0] = '\0';
+
+    if (!g_symbols_ready)
+    {
+        snprintf(fi.function, sizeof(fi.function), "%p", address);
+        return fi;
+    }
+
+    std::lock_guard<std::mutex> lock(g_dbghelp_mutex);
+
+    HANDLE process = GetCurrentProcess();
+
+    // symbol info needs extra space after it for the name string
+    constexpr size_t kNameLen = 255;
+    alignas(SYMBOL_INFO) char sym_buf[sizeof(SYMBOL_INFO) + kNameLen + 1] = {};
+    SYMBOL_INFO *sym = reinterpret_cast<SYMBOL_INFO *>(sym_buf);
+    sym->SizeOfStruct = sizeof(SYMBOL_INFO);
+    sym->MaxNameLen = kNameLen;
+
+    DWORD64 displacement = 0;
+    if (SymFromAddr(process, reinterpret_cast<DWORD64>(address), &displacement, sym))
+    {
+        strncpy_s(fi.function, sizeof(fi.function), sym->Name, _TRUNCATE);
+
+        fi.resolved = true;
+    }
+    else
+    {
+        snprintf(fi.function, sizeof(fi.function), "0x%p", address);
+    }
+
+    // file and line
+    IMAGEHLP_LINE64 line_info{};
+    line_info.SizeOfStruct = sizeof(IMAGEHLP_LINE64);
+    DWORD line_displacement = 0;
+
+    if (SymGetLineFromAddr64(process, reinterpret_cast<DWORD64>(address), &line_displacement, &line_info))
+    {
+        strncpy_s(fi.filename, sizeof(fi.filename), line_info.FileName, _TRUNCATE);
+        fi.line = static_cast<int>(line_info.LineNumber);
+    }
+
+    return fi;
+}
+
+void print_stack_trace(FILE *out, const StackTrace &trace, const char *indent)
+{
+    if (trace.depth == 0)
+    {
+        fprintf(out, "%s<no stack trace available>\n", indent);
+        return;
+    }
+
+    for (int i = 0; i < trace.depth; i++)
+    {
+        FrameInfo fi = resolve_frame(trace.frames[i]);
+        if (fi.filename[0] != '\0')
+        {
+            fprintf(out, "%s#%-2d  %s  (%s:%d)\n", indent, i, fi.function, fi.filename, fi.line);
+        }
+        else
+        {
+            fprintf(out, "%s#%-2d  %s\n", indent, i, fi.function);
+        }
+    }
+}
