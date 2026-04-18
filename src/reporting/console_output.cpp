@@ -85,3 +85,9 @@ void print_asan_header(const char *error_kind)
     fprintf(stderr, "\n");
     cprint(ConsoleColor::BrightRed, "asan: ERROR: %s\n", error_kind);
 }
+
+void print_divider()
+{
+    cprint(ConsoleColor::Gray,
+           "================================================================\n");
+}
