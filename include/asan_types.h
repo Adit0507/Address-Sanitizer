@@ -67,10 +67,10 @@ struct AsanReport
     size_t access_size; //how many bytes were being acceseed
     bool is_write;  
     uint8_t shadow_byte;
-    AllocInfo AllocInfo;
+    AllocInfo alloc_info;   
     StackTrace access_trace; //stack at point of bad access
 
-    AsanReport() : error_type(ErrorType::None), fault_addr(0), access_size(0), is_write(false) {}
+    AsanReport() : error_type(ErrorType::None), fault_addr(0), access_size(0), is_write(false), shadow_byte(0) {}
 };
 
 #endif
