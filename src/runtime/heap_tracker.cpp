@@ -34,6 +34,32 @@ void *HeapTracker::allocate_with_redzones(size_t user_size, AllocInfo &info_out)
     return reinterpret_cast<void *>(user_addr);
 }
 
+void *HeapTracker::on_malloc(size_t size)
+{
+    if (size == 0)
+        size = 1;
+
+    if (!get_shadow_memory().is_initialized())
+    {
+        return ::malloc(size);
+    }
+
+    AllocInfo info;
+    void *ptr = allocate_with_redzones(size, info);
+    if (!ptr)
+        return nullptr;
+
+    capture_stack_trace(info.alloc_trace, ASAN_MAX_STACK_FRAMES);
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        live_[info.user_ptr] = info;
+        total_allocated_ += size;
+    }
+
+    return ptr;
+}
+
+
 HeapTracker &get_heap_tracker()
 {
     static HeapTracker instance;
