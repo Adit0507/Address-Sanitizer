@@ -13,6 +13,9 @@
 
 class HeapTracker
 {
+    friend HeapTracker &get_heap_tracker();
+
+public:
     HeapTracker() = default;
     ~HeapTracker() = default;
 
@@ -37,13 +40,11 @@ class HeapTracker
 private:
     void *allocate_with_redzones(size_t user_size, AllocInfo &out);
 
-    mutable std:: mutex mutex_;
-    std::unordered_map<uintptr_t, AllocInfo> live_ ;
-    std::unordered_map<uintptr_t, AllocInfo> freed_ ;
+    mutable std::mutex mutex_;
+    std::unordered_map<uintptr_t, AllocInfo> live_;
+    std::unordered_map<uintptr_t, AllocInfo> freed_;
 
     size_t total_allocated_ = 0;
 };
-
-HeapTracker &get_heap_tracker();
 
 #endif
