@@ -107,6 +107,51 @@ void *HeapTracker::on_realloc(void *ptr, size_t new_size)
     return new_ptr;
 }
 
+// on free
+void HeapTracker::on_free(void *ptr)
+{
+    if (!ptr)
+        return;
+
+    if (!get_shadow_memory().is_initialized())
+    {
+        ::free(ptr);
+        return;
+    }
+
+    uintptr_t user_addr = reinterpret_cast<uintptr_t>(ptr);
+    std::lock_guard<std::mutex> lock(mutex_);
+
+    // checking for double free
+    auto freed_it = freed_.find(user_addr);
+    if (freed_it != freed_.end())
+    {
+        report_double_free(user_addr, freed_it->second);
+        return;
+    }
+
+    // checking for invalid free
+    auto live_it = live_.find(user_addr);
+    if(live_it == live_.end()) {
+        report_invalid_free(user_addr);
+        return;
+    }
+
+    AllocInfo info = live_it->second;
+    live_.erase(live_it);
+
+    capture_stack_trace(info.free_trace, ASAN_MAX_STACK_FRAMES);
+    info.is_freed = true;
+
+    // movin to freed map for double free or use after free diagnosis
+    if(freed_.size() >=kMaxFreedRecords) {
+        freed_.erase(freed_.begin());
+    }
+    freed_[user_addr] =info;
+
+    get_quarantine().enqueue(info);
+}
+
 HeapTracker &get_heap_tracker()
 {
     static HeapTracker instance;
