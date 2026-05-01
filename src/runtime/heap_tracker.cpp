@@ -132,7 +132,8 @@ void HeapTracker::on_free(void *ptr)
 
     // checking for invalid free
     auto live_it = live_.find(user_addr);
-    if(live_it == live_.end()) {
+    if (live_it == live_.end())
+    {
         report_invalid_free(user_addr);
         return;
     }
@@ -144,12 +145,77 @@ void HeapTracker::on_free(void *ptr)
     info.is_freed = true;
 
     // movin to freed map for double free or use after free diagnosis
-    if(freed_.size() >=kMaxFreedRecords) {
+    if (freed_.size() >= kMaxFreedRecords)
+    {
         freed_.erase(freed_.begin());
     }
-    freed_[user_addr] =info;
+    freed_[user_addr] = info;
 
     get_quarantine().enqueue(info);
+}
+
+// metdata queries
+bool HeapTracker::get_alloc_info(uintptr_t user_ptr, AllocInfo &out) const
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = live_.find(user_ptr);
+
+    if (it == live_.end())
+        return false;   
+    out = it->second;
+
+    return true;
+}
+bool HeapTracker::find_allocation_for_addr(uintptr_t addr, AllocInfo &out) const
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+
+    for (const auto &[key, info] : live_) // searchin live allocations
+    {
+        uintptr_t full_start = info.alloc_ptr;
+        uintptr_t full_end = info.alloc_ptr + info.alloc_size;
+        if (addr >= full_start && addr < full_end)
+        {
+            out = info;
+            return true;
+        }
+    }
+
+    for (const auto &[key, info] : freed_) // searchin freed allocations
+    {
+        uintptr_t full_start = info.alloc_ptr;
+        uintptr_t full_end = info.alloc_ptr + info.alloc_size;
+        if (addr >= full_start && addr < full_end)
+        {
+            out = info;
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool HeapTracker::is_known_freed(uintptr_t user_ptr, AllocInfo &out) const
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+
+    auto it = freed_.find(user_ptr);
+    if (it == freed_.end())
+        return false;
+    out = it->second;
+
+    return true;
+}
+
+size_t HeapTracker::live_count() const
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    return live_.size();
+}
+size_t HeapTracker::total_allocated() const
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    return total_allocated_;
 }
 
 HeapTracker &get_heap_tracker()
