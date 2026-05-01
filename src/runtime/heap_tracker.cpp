@@ -5,6 +5,11 @@
 #include "../reporting/error_reporter.h"
 #include "asan_types.h"
 
+#include <cstdlib>
+#include <cstring>
+#include <cassert>
+#include <cstdio>
+
 static constexpr size_t kRedzoneSize = ASAN_REDZONE_SIZE;
 static constexpr size_t kMaxFreedRecords = 4096; // max no of freed alllocation records to keep double free
 
@@ -59,6 +64,48 @@ void *HeapTracker::on_malloc(size_t size)
     return ptr;
 }
 
+void *HeapTracker::on_calloc(size_t count, size_t elem_size)
+{
+    size_t total = count * elem_size;
+
+    void *ptr = on_malloc(total);
+    if (ptr)
+        memset(ptr, 0, total);
+
+    return ptr;
+}
+void *HeapTracker::on_realloc(void *ptr, size_t new_size)
+{
+    if (!ptr)
+        return on_malloc(new_size);
+    if (!new_size)
+    {
+        on_free(ptr);
+        return nullptr;
+    }
+
+    AllocInfo old_info;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto it = live_.find(reinterpret_cast<uintptr_t>(ptr));
+        if (it == live_.end())
+        {
+            report_invalid_free(reinterpret_cast<uintptr_t>(ptr));
+            return nullptr;
+        }
+        old_info = it->second;
+    }
+
+    void *new_ptr = on_malloc(new_size);
+    if (!new_ptr)
+        return nullptr;
+
+    size_t copy_size = old_info.user_size < new_size ? old_info.user_size : new_size;
+    memcpy(new_ptr, ptr, copy_size);
+
+    on_free(ptr);
+    return new_ptr;
+}
 
 HeapTracker &get_heap_tracker()
 {
