@@ -47,4 +47,6 @@ private:
     size_t total_allocated_ = 0;
 };
 
+HeapTracker &get_heap_tracker();
+
 #endif
