@@ -1,5 +1,5 @@
 #pragma once
-#ifdef ASAN_H
+#ifndef ASAN_H
 #define ASAN_H
 
 #include "asan_config.h"
@@ -12,7 +12,7 @@
 void asan_init();     // reseving shadow memory & installing heap hooks
 void asan_shutdown(); // flush quarantine, printin summary & release shadow memory
 
-void asan_check(uinptr_t addr, size_t size, bool is_write);
+void asan_check(uintptr_t addr, size_t size, bool is_write);
 
 inline void asan_check_read(const void *ptr, size_t size)
 {
