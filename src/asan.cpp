@@ -30,3 +30,14 @@ void asan_init()
                     "Quarantine: %llu MB\n",
             ASAN_REDZONE_SIZE, static_cast<unsigned long long>(ASAN_QUARANTINE_MAX_BYTES) / (1024 * 1024));
 }
+
+void asan_shutdown() {
+    if(!g_initialized.load()) return;
+
+    get_quarantine().flush();   //releasin held memory
+    report_summary();
+    get_shadow_memory().shutdown();//release shadow memory reservation
+    symbols_shutdown(); //clean up dbgehlp
+
+    g_initialized.store(false);
+}
