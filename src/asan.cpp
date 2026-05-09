@@ -41,3 +41,22 @@ void asan_shutdown() {
 
     g_initialized.store(false);
 }
+
+void asan_check(uintptr_t addr, size_t size, bool is_write) {
+    if(!g_initialized.load(std:: memory_order_relaxed)) return;
+
+    __asan_check(addr, size, is_write);
+}
+
+void *asan_malloc(size_t size) {
+    return get_heap_tracker().on_malloc(size);
+}
+void *asan_calloc(size_t count, size_t size) {
+    return get_heap_tracker().on_calloc(count, size);
+}
+void *asan_realloc(void *ptr, size_t new_size){
+
+}
+void asan_free(void *ptr) {
+    get_heap_tracker().on_free(ptr);
+}
