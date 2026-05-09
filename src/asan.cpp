@@ -60,3 +60,22 @@ void *asan_realloc(void *ptr, size_t new_size){
 void asan_free(void *ptr) {
     get_heap_tracker().on_free(ptr);
 }
+
+void asan_report_summary() {
+    report_summary();
+}
+int asan_error_count() {
+    return get_error_count();
+}
+
+// poisoning
+void asan_poison(void *ptr, size_t size, uint8_t shadow_value) {
+    get_shadow_memory().poison(reinterpret_cast<uintptr_t>(ptr), size, shadow_value);
+}
+void asan_poison_partial(void *ptr, size_t size, uint8_t shadow_value) {
+    get_shadow_memory().poison_partial(reinterpret_cast<uintptr_t>(ptr), size, shadow_value);
+}
+
+void asan_unpoison(void *ptr, size_t size){
+    get_shadow_memory().unpoison(reinterpret_cast<uintptr_t> (ptr), size);
+}
