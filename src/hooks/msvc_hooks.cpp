@@ -7,19 +7,25 @@ static std::atomic<int> g_max_depth{0};
 
 extern "C" void penter_handler()
 {
-    ++tl_call_depth;
-
-    int cur = tl_call_depth;
-    int old = g_max_depth.load(std::memory_order_relaxed);
-    while (cur > old && !g_max_depth.compare_exchange_weak(old, cur, std::memory_order_relaxed))
-    {
+    __try {
+        ++tl_call_depth;
     }
+    __except(1){}
+
+    // int cur = tl_call_depth;
+    // int old = g_max_depth.load(std::memory_order_relaxed);
+    // while (cur > old && !g_max_depth.compare_exchange_weak(old, cur, std::memory_order_relaxed))
+    // {
+    // }
 }
 
 extern "C" void pexit_handler()
 {
-    if (tl_call_depth > 0)
-        --tl_call_depth;
+    __try {
+        if (tl_call_depth > 0)
+            --tl_call_depth;
+    } 
+    __except(1){}
 }
 
 int asan_call_depth()
