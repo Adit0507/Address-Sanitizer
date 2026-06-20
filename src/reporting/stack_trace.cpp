@@ -10,12 +10,25 @@
 #include <cstring>
 #include <mutex>
 
-static std::mutex g_dbghelp_mutex;
+static CRITICAL_SECTION cs_;
 static bool g_symbols_ready = false;
+static bool g_cs_initialized = false;
+
+struct CSLock
+{
+    CRITICAL_SECTION &cs;
+    CSLock(CRITICAL_SECTION &c) : cs(c) { EnterCriticalSection(&cs); }
+    ~CSLock() { LeaveCriticalSection(&cs); }
+};
 
 bool init_symbol_handler()
 {
-    std::lock_guard<std::mutex> lock(g_dbghelp_mutex);
+    if(!g_cs_initialized){
+        InitializeCriticalSection(&cs_);
+        g_cs_initialized = true;
+    }
+
+    CSLock lock(cs_);
     if (g_symbols_ready)
         return true;
     SymSetOptions(SYMOPT_UNDNAME | SYMOPT_DEFERRED_LOADS | SYMOPT_LOAD_LINES);
@@ -59,7 +72,7 @@ FrameInfo resolve_frame(void *address)
         return fi;
     }
 
-    std::lock_guard<std::mutex> lock(g_dbghelp_mutex);
+    CSLock lock(cs_);
 
     HANDLE process = GetCurrentProcess();
 
@@ -94,6 +107,14 @@ FrameInfo resolve_frame(void *address)
     }
 
     return fi;
+}
+
+// cleanup func
+void cleanup_symbol_handler() {
+    if(g_cs_initialized){
+        DeleteCriticalSection(&cs_);
+        g_cs_initialized = false;
+    }
 }
 
 void print_stack_trace(FILE *out, const StackTrace &trace, const char *indent)
