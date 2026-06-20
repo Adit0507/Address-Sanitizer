@@ -19,7 +19,9 @@ void Quarantine::enqueue(const AllocInfo &info)
     shadow.poison_partial(info.user_ptr, info.user_size, shadow::kFreedMemory);
 
     // heap allocated metadata node
-    QuarantineEntry *entry = new QuarantineEntry();
+    QuarantineEntry *entry = static_cast<QuarantineEntry*>(::malloc(sizeof(QuarantineEntry)));
+    if(!entry) return;
+
     entry->alloc_ptr = info.alloc_ptr;
     entry->user_ptr = info.user_ptr;
     entry->alloc_size = info.alloc_size;
@@ -80,8 +82,7 @@ void Quarantine::release_entry(QuarantineEntry *entry)
     shadow.unpoison(entry->alloc_ptr, entry->alloc_size); //unpoison full allocation
  
     ::free(reinterpret_cast<void*>(entry->alloc_ptr)); //return underlying memory to crt
- 
-    delete entry;
+    ::free(entry);
 }
 
 Quarantine &get_quarantine()
