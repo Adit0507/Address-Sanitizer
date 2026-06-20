@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <cstring>
 #include <algorithm>
+#include <windows.h>
 
 bool ShadowMemory ::init()
 {
@@ -18,7 +19,7 @@ bool ShadowMemory ::init()
     }
 
     shadow_base_ = base;
-    committed_end_ = 0;
+    // committed_end_ = 0;
 
     fprintf(stderr, "[asan] Shadow memory initialised. Base %p, size: 16TB\n", shadow_base_);
 
@@ -31,7 +32,7 @@ void ShadowMemory::shutdown()
         return;
     platform_release(shadow_base_);
     shadow_base_ = nullptr;
-    committed_end_ = 0;
+    // committed_end_ = 0;
 }
 
 ShadowMemory::~ShadowMemory()
@@ -39,37 +40,51 @@ ShadowMemory::~ShadowMemory()
     shutdown();
 }
 
-bool ShadowMemory ::ensure_committed(uint8_t *shadow_ptr, size_t len)
+bool ShadowMemory::ensure_committed(uint8_t *shadow_ptr, size_t len)
 {
-    uintptr_t base = reinterpret_cast<uintptr_t>(shadow_base_);
     uintptr_t start = reinterpret_cast<uintptr_t>(shadow_ptr);
-
-    assert(start >= base && "shadow_ptr is below shadow_base_");
-    size_t offset_end = (start - base) + len;
-
-    if (offset_end <= committed_end_)
-        return true;
-
     size_t gran = platform_alloc_granularity();
-    size_t commit_start = committed_end_ & ~(gran - 1);
-    size_t commit_end = (offset_end + gran - 1) & ~(gran - 1);
-    size_t commit_size = commit_end - commit_start;
 
-    if (commit_start + commit_size > shadow::kShadowSize)
+    uintptr_t page_start = start & ~static_cast<uintptr_t>(gran - 1);
+    uintptr_t page_end = (start + len + gran - 1) & ~static_cast<uintptr_t>(gran - 1);
+
+    // fprintf(stderr, "[commit] shadow_ptr=%p len=%zu page_start=0x%llx page_end=0x%llx\n",
+    //         shadow_ptr, len, (unsigned long long)page_start, (unsigned long long)page_end);
+
+    for (uintptr_t page = page_start; page < page_end; page += gran)
     {
-        fprintf(stderr, "[my_asan] FATAL: Shadow commit would exceed 16TB.\n");
-        return false;
+        MEMORY_BASIC_INFORMATION mbi{};
+        if (VirtualQuery(reinterpret_cast<void *>(page), &mbi, sizeof(mbi)) == 0)
+        {
+            // fprintf(stderr, "[commit] VirtualQuery FAILED at 0x%llx err=%lu\n",
+            //         (unsigned long long)page, GetLastError());
+            return false;
+        }
+
+        // fprintf(stderr, "[commit] page=0x%llx State=0x%lx Type=0x%lx\n",
+        //         (unsigned long long)page, mbi.State, mbi.Type);
+
+        if (mbi.State == MEM_COMMIT)
+        {
+            // fprintf(stderr, "[commit] already committed, skip\n");
+            continue;
+        }
+
+        void *result = VirtualAlloc(
+            reinterpret_cast<void *>(page), gran, MEM_COMMIT, PAGE_READWRITE);
+
+        if (!result)
+        {
+            // fprintf(stderr, "[commit] VirtualAlloc FAILED at 0x%llx err=%lu\n",
+            //         (unsigned long long)page, GetLastError());
+            return false;
+        }
+
+        // fprintf(stderr, "[commit] committed page at 0x%llx\n", (unsigned long long)page);
     }
-
-    void *result = platform_commit(reinterpret_cast<void *>(base + commit_start), commit_size);
-    if (!result)
-        return false;
-
-    committed_end_ = commit_end;
 
     return true;
 }
-
 void ShadowMemory ::poison(uintptr_t addr, size_t size, uint8_t value)
 {
     assert(shadow_base_ != nullptr && "Shadow Memory not initialised");
@@ -82,9 +97,15 @@ void ShadowMemory ::poison(uintptr_t addr, size_t size, uint8_t value)
     size_t slen = size >> shadow::kGranularityLog2;
 
     if (!ensure_committed(sptr, slen))
+    {
+        // fprintf(stderr, "[poison] ensure_committed FAILED \n");
         return;
+    }
 
+    // fprintf(stderr, "[poison] wrirting 0x%02x to %p len=%zu\n", value, sptr, slen);
     memset(sptr, value, slen);
+
+    // fprintf(stderr, "[poison] verify: *sptr = 0x%02x\n", *sptr);
 }
 void ShadowMemory::unpoison(uintptr_t addr, size_t size)
 {
@@ -146,7 +167,11 @@ uint8_t ShadowMemory::get_shadow_byte(uintptr_t addr) const
     assert(shadow_base_ != nullptr && "Shadow Memory not initialised");
 
     const uint8_t *sptr = shadow_ptr_of(addr);
-    if (!platform_is_committed(const_cast<uint8_t *>(sptr), 1))
+    MEMORY_BASIC_INFORMATION mbi{};
+
+    if (VirtualQuery(sptr, &mbi, sizeof(mbi)) == 0)
+        return shadow::kAccessible;
+    if (mbi.State != MEM_COMMIT)
         return shadow::kAccessible;
 
     return *sptr;
@@ -180,7 +205,7 @@ bool ShadowMemory::is_range_poisoned(uintptr_t addr, size_t size) const
     for (uintptr_t cur = addr; cur < end; cur += shadow::kGranularity)
     {
         size_t remaining = end - cur;
-        size_t check_size = std::min(remaining, shadow::kGranularity);
+        size_t check_size = remaining < shadow::kGranularity ? remaining : shadow::kGranularity;
 
         if (is_poisoned(cur, check_size))
             return true;
@@ -192,13 +217,13 @@ bool ShadowMemory::is_range_poisoned(uintptr_t addr, size_t size) const
 // diagnostics
 uintptr_t ShadowMemory::shadow_addr_of(uintptr_t real_addr) const
 {
-    return reinterpret_cast<uintptr_t>(shadow_addr_of(real_addr));
+    return reinterpret_cast<uintptr_t>(shadow_ptr_of(real_addr));
 }
 
 void ShadowMemory ::dump_shadow_region(uintptr_t addr, size_t context_bytes) const
 {
     uintptr_t start = (addr - context_bytes) & ~(shadow::kGranularity - 1ULL);
-    uintptr_t end = (addr + context_bytes);
+    uintptr_t end = (addr + context_bytes + shadow::kGranularity - 1) & ~(shadow::kGranularity - 1ULL);
 
     fprintf(stderr, "\n[asan] Shadow map around %p:\n", reinterpret_cast<void *>(addr));
     fprintf(stderr, "  %-18s  %-6s  %s\n", "Real Addr", "Shadow", "State");
