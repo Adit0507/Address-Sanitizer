@@ -28,7 +28,7 @@ static bool is_console()
 
 void set_color(ConsoleColor color)
 {
-    if (!is_console)
+    if (!is_console())
         return;
 
     WORD attr = kColorDefault;
