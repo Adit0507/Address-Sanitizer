@@ -55,7 +55,7 @@ void *asan_calloc(size_t count, size_t size) {
     return get_heap_tracker().on_calloc(count, size);
 }
 void *asan_realloc(void *ptr, size_t new_size){
-
+    return get_heap_tracker().on_realloc(ptr, new_size);
 }
 void asan_free(void *ptr) {
     get_heap_tracker().on_free(ptr);
