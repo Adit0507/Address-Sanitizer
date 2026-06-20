@@ -1,0 +1,113 @@
+cmake_minimum_required(VERSION 3.20)
+project(asan LANGUAGES CXX ASM_MASM)
+
+#require msvc on windows
+if(NOT MSVC)
+    message(FATAL_ERROR "asan requires msvc (cl.exe).")
+endif()
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# compiler flags
+set(ASAN_COMMON_FLAGS
+    /W4             # Warning level 4
+    /WX-            # Warnings not errors (asan internals use some unsafe patterns)
+    /Zi             # Full debug info (required for DbgHelp symbol resolution)
+    /Od             # Disable optimisations (easier debugging; remove for perf tests)
+    /EHsc           # Standard C++ exception handling
+    /MP             # Parallel compilation
+    /utf-8
+)
+set(ASAN_INSTRUMENT_FLAGS
+    # /GH # Insert _penter() call at function entry
+    # /Gh #insert _pexit() call at functuion exit
+)
+
+# library sources
+set(ASAN_RUNTIME_SOURCES
+    src/asan.cpp
+    src/runtime/shadow_memory.cpp
+    src/runtime/heap_tracker.cpp
+    src/runtime/quarantine.cpp
+    src/runtime/checker.cpp
+    src/reporting/stack_trace.cpp
+    src/reporting/error_reporter.cpp
+    src/reporting/console_output.cpp
+    src/platform/win32_memory.cpp
+    src/platform/win32_symbols.cpp
+    src/hooks/malloc_hooks.cpp
+    src/hooks/operator_hooks.cpp
+)
+
+# msvc hooks
+set(ASAN_HOOKS_NO_INSTRUMENT
+    src/hooks/msvc_hooks.cpp
+    src/hooks/msvc_hooks.asm   # Assembled by ml64.exe via MASM
+)
+
+# ASAN STATIC LIBRARY
+add_library(asan STATIC
+    ${ASAN_RUNTIME_SOURCES}
+    ${ASAN_HOOKS_NO_INSTRUMENT}
+)
+
+target_include_directories(asan PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+target_compile_options(asan PRIVATE $<$<COMPILE_LANGUAGE:CXX>:${ASAN_COMMON_FLAGS}>)
+
+set_source_files_properties(
+    src/hooks/msvc_hooks.cpp
+    PROPERTIES COMPILE_OPTIONS "/utf-8;/W4;/WX-;/Zi;/Od;/EHsc;/MP"
+)
+set_source_files_properties(
+    src/hooks/msvc_hooks.asm
+    PROPERTIES LANGUAGE ASM_MASM
+)
+
+target_link_libraries(asan PUBLIC DbgHelp)
+
+# adding instrumented executalbe
+macro(add_asan_executable target source)
+    add_executable(${target} ${source})
+    target_link_libraries(${target} PRIVATE asan)
+    target_include_directories(${target} PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+    )
+    # Apply instrumentation flags to USER code
+    target_compile_options(${target} PRIVATE
+        ${ASAN_COMMON_FLAGS}
+        ${ASAN_INSTRUMENT_FLAGS}
+    )
+    # /DEBUG so that DbgHelp can resolve symbols from the PDB
+    target_link_options(${target} PRIVATE /DEBUG)
+endmacro()
+
+enable_testing()
+add_asan_executable(test_heap_overflow   tests/test_heap_overflow.cpp)
+add_asan_executable(test_use_after_free   tests/test_use_after_free.cpp)
+add_asan_executable(test_double_free   tests/test_double_free.cpp)
+add_asan_executable(test_stack_overflow   tests/test_stack_overflow.cpp)
+add_asan_executable(test_clean   tests/test_clean.cpp)
+
+add_executable(test_minimal tests/test_minimal.cpp)
+target_link_libraries(test_minimal PRIVATE asan)
+target_link_options(test_minimal PRIVATE /DEBUG)
+
+add_executable(test_crash tests/test_crash.cpp)
+target_link_libraries(test_crash PRIVATE asan)
+
+add_test(NAME clean_run COMMAND test_clean)
+
+# error test are expected to abort 
+add_test(NAME heap_overflow COMMAND test_heap_overflow)
+add_test(NAME use_after_free COMMAND test_use_after_free)
+add_test(NAME double_free COMMAND test_double_free)
+add_test(NAME stack_overflow COMMAND test_stack_overflow)
+
+set_tests_properties(heap_overflow use_after_free double_free stack_overflow PROPERTIES WILL_FAIL TRUE)
+ 
+add_asan_executable(basic_usage examples/basic_usage.cpp)
