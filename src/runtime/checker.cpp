@@ -47,10 +47,11 @@ void __asan_check(uintptr_t addr, size_t size, bool is_write)
     if (!shadow.is_initialized())
         return;
 
-    if (!shadow.is_poisoned(addr, size))
+    if (!shadow.is_poisoned(addr, size)){
         return; // checkin first bytes shadow
+    }
 
-    uint8_t shadow_byte = shadow.get_shadow_byte(addr);
+    uint8_t shadow_byte = shadow.get_shadow_byte(addr);    
     AsanReport report;
     report.fault_addr = addr;
     report.access_size = size;
@@ -58,10 +59,12 @@ void __asan_check(uintptr_t addr, size_t size, bool is_write)
     report.shadow_byte = shadow_byte;
     report.error_type = classify_error(addr, shadow_byte);
 
-    capture_stack_trace(report.access_trace, ASAN_MAX_STACK_FRAMES); //capturin stack trace
+    capture_stack_trace(report.access_trace, ASAN_MAX_STACK_FRAMES);
+
     get_heap_tracker().find_allocation_for_addr(addr, report.alloc_info); //attaching allocation metadata if we can find related allociton
 
     report_error(report);
+
 }
 
 void __asan_check_load(uintptr_t addr, size_t size)
