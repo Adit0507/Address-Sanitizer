@@ -13,6 +13,21 @@
 static constexpr size_t kRedzoneSize = ASAN_REDZONE_SIZE;
 static constexpr size_t kMaxFreedRecords = 4096; // max no of freed alllocation records to keep double free
 
+struct CSLock
+{
+    CRITICAL_SECTION &cs;
+    CSLock(CRITICAL_SECTION &c) : cs(c) { EnterCriticalSection(&cs); }
+    ~CSLock() { LeaveCriticalSection(&cs); }
+};
+struct ReentrancyGuard
+{
+    bool &flag;
+    ReentrancyGuard(bool &f) : flag(f) { flag = true; }
+    ~ReentrancyGuard() { flag = false; }
+};
+
+static thread_local int tl_tracker_depth_;
+
 void *HeapTracker::allocate_with_redzones(size_t user_size, AllocInfo &info_out)
 {
     size_t user_size_aligned = (user_size + 7) & ~7ULL;                  // user size upto 8byte boundary
@@ -39,28 +54,34 @@ void *HeapTracker::allocate_with_redzones(size_t user_size, AllocInfo &info_out)
     return reinterpret_cast<void *>(user_addr);
 }
 
-void *HeapTracker::on_malloc(size_t size)
+void *HeapTracker ::on_malloc(size_t size)
 {
+    if (tl_tracker_depth_ > 0)
+        return ::malloc(size);
+    ++tl_tracker_depth_;
+
     if (size == 0)
         size = 1;
-
     if (!get_shadow_memory().is_initialized())
     {
+        --tl_tracker_depth_;
         return ::malloc(size);
     }
 
+    ensure_maps();
+
     AllocInfo info;
     void *ptr = allocate_with_redzones(size, info);
-    if (!ptr)
-        return nullptr;
-
-    capture_stack_trace(info.alloc_trace, ASAN_MAX_STACK_FRAMES);
+    if (ptr)
     {
-        std::lock_guard<std::mutex> lock(mutex_);
-        live_[info.user_ptr] = info;
+        if(freed_){
+            freed_->erase(info.user_ptr);
+        }
+        (*live_)[info.user_ptr] = info;
         total_allocated_ += size;
     }
 
+    --tl_tracker_depth_;
     return ptr;
 }
 
@@ -83,18 +104,28 @@ void *HeapTracker::on_realloc(void *ptr, size_t new_size)
         on_free(ptr);
         return nullptr;
     }
+    if(tl_tracker_depth_ >0){
+        return ::realloc(ptr, new_size);
+    }
 
     AllocInfo old_info;
+    bool found = false;
     {
-        std::lock_guard<std::mutex> lock(mutex_);
-        auto it = live_.find(reinterpret_cast<uintptr_t>(ptr));
-        if (it == live_.end())
-        {
-            report_invalid_free(reinterpret_cast<uintptr_t>(ptr));
-            return nullptr;
+        ++tl_tracker_depth_;
+        if(live_){
+            auto it = live_->find(reinterpret_cast<uintptr_t> (ptr));
+            if(it != live_->end()){
+                old_info = it->second;
+                found = true;
+            }
         }
-        old_info = it->second;
+        --tl_tracker_depth_;
     }
+
+    if(!found){
+        report_invalid_free(reinterpret_cast<uintptr_t>(ptr));
+        return nullptr;
+    }   
 
     void *new_ptr = on_malloc(new_size);
     if (!new_ptr)
@@ -110,82 +141,93 @@ void *HeapTracker::on_realloc(void *ptr, size_t new_size)
 // on free
 void HeapTracker::on_free(void *ptr)
 {
-    if (!ptr)
-        return;
-
-    if (!get_shadow_memory().is_initialized())
+    fprintf(stderr, "[on_free] called with ptr= %p\n", ptr);
+    if (tl_tracker_depth_ > 0)
     {
         ::free(ptr);
         return;
     }
+    ++tl_tracker_depth_;
+
+    if (!ptr)
+    {
+        --tl_tracker_depth_;
+        return;
+    }
+
+    if (!get_shadow_memory().is_initialized())
+    {
+        ::free(ptr);
+        --tl_tracker_depth_;
+        return;
+    }
+
+    ensure_maps(); // ← safe to construct maps now
 
     uintptr_t user_addr = reinterpret_cast<uintptr_t>(ptr);
-    std::lock_guard<std::mutex> lock(mutex_);
 
-    // checking for double free
-    auto freed_it = freed_.find(user_addr);
-    if (freed_it != freed_.end())
+    auto freed_it = freed_->find(user_addr);
+    if (freed_it != freed_->end())
     {
+        --tl_tracker_depth_;
         report_double_free(user_addr, freed_it->second);
         return;
     }
 
-    // checking for invalid free
-    auto live_it = live_.find(user_addr);
-    if (live_it == live_.end())
+    auto live_it = live_->find(user_addr);
+    if (live_it == live_->end())
     {
+        --tl_tracker_depth_;
         report_invalid_free(user_addr);
         return;
     }
 
     AllocInfo info = live_it->second;
-    live_.erase(live_it);
-
-    capture_stack_trace(info.free_trace, ASAN_MAX_STACK_FRAMES);
+    live_->erase(live_it);
     info.is_freed = true;
 
-    // movin to freed map for double free or use after free diagnosis
-    if (freed_.size() >= kMaxFreedRecords)
-    {
-        freed_.erase(freed_.begin());
-    }
-    freed_[user_addr] = info;
+    if (freed_->size() >= kMaxFreedRecords)
+        freed_->erase(freed_->begin());
+    (*freed_)[user_addr] = info;
 
+    --tl_tracker_depth_;
     get_quarantine().enqueue(info);
 }
 
 // metdata queries
 bool HeapTracker::get_alloc_info(uintptr_t user_ptr, AllocInfo &out) const
 {
-    std::lock_guard<std::mutex> lock(mutex_);
-    auto it = live_.find(user_ptr);
+    if (!live_)
+        return false;
+    CSLock lock(cs_);
 
-    if (it == live_.end())
-        return false;   
+    auto it = live_->find(user_ptr);
+    if (it == live_->end())
+        return false;
     out = it->second;
 
     return true;
 }
+
 bool HeapTracker::find_allocation_for_addr(uintptr_t addr, AllocInfo &out) const
 {
-    std::lock_guard<std::mutex> lock(mutex_);
+    if (!live_)
+        return false;
+    CSLock lock(cs_);
 
-    for (const auto &[key, info] : live_) // searchin live allocations
+    for (const auto &[key, info] : *live_)
     {
-        uintptr_t full_start = info.alloc_ptr;
-        uintptr_t full_end = info.alloc_ptr + info.alloc_size;
-        if (addr >= full_start && addr < full_end)
+        if (addr >= info.alloc_ptr && addr < info.alloc_ptr + info.alloc_size)
         {
             out = info;
             return true;
         }
     }
-
-    for (const auto &[key, info] : freed_) // searchin freed allocations
+    if (!freed_)
+        return false;
+    for (const auto &[key, info] : *freed_)
     {
-        uintptr_t full_start = info.alloc_ptr;
-        uintptr_t full_end = info.alloc_ptr + info.alloc_size;
-        if (addr >= full_start && addr < full_end)
+        if (addr >= info.alloc_ptr && addr < info.alloc_ptr + info.alloc_size)
         {
             out = info;
             return true;
@@ -197,10 +239,12 @@ bool HeapTracker::find_allocation_for_addr(uintptr_t addr, AllocInfo &out) const
 
 bool HeapTracker::is_known_freed(uintptr_t user_ptr, AllocInfo &out) const
 {
-    std::lock_guard<std::mutex> lock(mutex_);
+    if (!freed_)
+        return false;
+    CSLock lock(cs_);
 
-    auto it = freed_.find(user_ptr);
-    if (it == freed_.end())
+    auto it = freed_->find(user_ptr);
+    if (it == freed_->end())
         return false;
     out = it->second;
 
@@ -209,12 +253,14 @@ bool HeapTracker::is_known_freed(uintptr_t user_ptr, AllocInfo &out) const
 
 size_t HeapTracker::live_count() const
 {
-    std::lock_guard<std::mutex> lock(mutex_);
-    return live_.size();
+    if (!live_)
+        return 0;
+    CSLock lock(cs_);
+    return live_->size();
 }
 size_t HeapTracker::total_allocated() const
 {
-    std::lock_guard<std::mutex> lock(mutex_);
+    CSLock lock(cs_);
     return total_allocated_;
 }
 
