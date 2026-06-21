@@ -8,9 +8,27 @@
 #include <cstdlib>
 #include <atomic>
 #include <mutex>
+#include <windows.h>
+
+#define WIN32_LEAN_AND_MEAN
 
 static std::atomic<int> g_error_count{0};
-static std::mutex g_report_mutex; // serialise concurrent reports
+// static std::mutex g_report_mutex; // serialise concurrent reports
+static CRITICAL_SECTION cs_;
+static bool g_cs_initialized = false;
+
+static void ensure_cs_init(){
+    if(!g_cs_initialized){
+        InitializeCriticalSection(&cs_);
+        g_cs_initialized = true;
+    }
+}
+
+struct CSLock{
+    CRITICAL_SECTION &cs;
+    CSLock(CRITICAL_SECTION &c): cs(c) {EnterCriticalSection(&cs);}
+    ~CSLock() {LeaveCriticalSection(&cs);}
+};
 
 static const char *error_type_string(ErrorType t)
 {
@@ -63,7 +81,8 @@ static void print_alloc_section(const AllocInfo &info)
 
 void report_error(const AsanReport &report)
 {
-    std::lock_guard<std::mutex> lock(g_report_mutex);
+    ensure_cs_init();
+    CSLock lock(cs_);
     g_error_count.fetch_add(1, std::memory_order_relaxed);
 
     const char *kind = error_type_string(report.error_type);
@@ -90,7 +109,8 @@ void report_error(const AsanReport &report)
 
 void report_double_free(uintptr_t ptr, const AllocInfo &prev)
 {
-    std::lock_guard<std::mutex> lock(g_report_mutex);
+    ensure_cs_init();
+    CSLock lock(cs_);
     g_error_count.fetch_add(1, std::memory_order_relaxed);
 
     print_asan_header("double-free");
@@ -113,7 +133,8 @@ void report_double_free(uintptr_t ptr, const AllocInfo &prev)
 
 void report_invalid_free(uintptr_t ptr)
 {
-    std::lock_guard<std::mutex> lock(g_report_mutex);
+    ensure_cs_init();
+    CSLock lock(cs_);
     g_error_count.fetch_add(1, std::memory_order_relaxed);
 
     print_asan_header("invalid-free");
